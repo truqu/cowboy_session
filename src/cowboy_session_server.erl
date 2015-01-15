@@ -62,7 +62,7 @@ init(Config) ->
 	{_, Storage} = lists:keyfind(storage, 1, Config),
 	Storage:new(SID),
 	gproc:add_local_name({cowboy_session, SID}),
-	{ok, Expire_TRef} = timer:exit_after(Expire * 1000, expire),
+	{ok, Expire_TRef} = timer:send_after(Expire * 1000, expire),
 	{ok, #state{
 		sid = SID,
 		expire = Expire,
@@ -87,7 +87,7 @@ handle_cast({set, Key, Value}, #state{sid = SID, storage = Storage} = State) ->
 
 handle_cast(touch, #state{expire = Expire, expire_tref = Expire_TRef} = State) ->
 	{ok, cancel} = timer:cancel(Expire_TRef),
-	{ok, New_TRef} = timer:exit_after(Expire * 1000, expire),
+	{ok, New_TRef} = timer:send_after(Expire * 1000, expire),
 	{noreply, State#state{expire_tref = New_TRef}};
 
 handle_cast(stop, #state{expire_tref = Expire_TRef} = State) ->
@@ -96,6 +96,9 @@ handle_cast(stop, #state{expire_tref = Expire_TRef} = State) ->
 
 handle_cast(_, State) -> {noreply, State}.
 
+
+handle_info(expire, State) ->
+	{stop, normal, State};
 
 handle_info(_, State) -> {noreply, State}.
 
