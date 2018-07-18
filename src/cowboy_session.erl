@@ -99,7 +99,7 @@ get_session(Req) ->
 		_ ->
 			case gproc:lookup_local_name({cowboy_session, SID}) of
 				undefined ->
-					create_session(Req2);
+					create_session(Req2, SID);
 				Pid ->
 					cowboy_session_server:touch(Pid),
 					{Pid, Req2}
@@ -117,9 +117,10 @@ clear_cookie(Req) ->
 		Req2).
 
 create_session(Req) ->
-	%% The cookie value cannot contain any of the following characters:
-	%%   ,; \t\r\n\013\014
 	SID = list_to_binary(uuid:to_string(uuid:v4())),
+	create_session(Req, SID).
+
+create_session(Req, SID) ->
 	{ok, Cookie_name} = ?CONFIG(cookie_name),
 	{ok, Cookie_options} = ?CONFIG(cookie_options),
 	{ok, Storage} = ?CONFIG(storage),
