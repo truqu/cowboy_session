@@ -85,36 +85,41 @@ init([]) ->
 %% Internal functions
 %% ===================================================================
 
+get_cookie(#{ cookie := undefined } = Req) ->
+	case cowboy_req:parse_cookies(Req) of
+		[] ->
+			undefined;
+		List ->
+			{ok, Cookie_name} = ?CONFIG(cookie_name),
+			{_Key, Value} = lists:keyfind(Cookie_name, 1, List),
+			Value
+	end;
+get_cookie(#{ cookie := Value }) ->
+	Value.
+
 get_session(Req) ->
-	{ok, Cookie_name} = ?CONFIG(cookie_name),
-	{SID, Req2} = case cowboy_req:meta(cookie, Req) of
-		{undefined, Req3} ->
-			cowboy_req:cookie(Cookie_name, Req3);
-		Result ->
-			Result
-	end,
+	SID = get_cookie(Req),
 	case SID of
 		undefined ->
-			create_session(Req2);
+			create_session(Req);
 		_ ->
 			case gproc:lookup_local_name({cowboy_session, SID}) of
 				undefined ->
-					create_session(Req2, SID);
+					create_session(Req, SID);
 				Pid ->
 					cowboy_session_server:touch(Pid),
-					{Pid, Req2}
+					{Pid, Req}
 			end
 	end.
 
 clear_cookie(Req) ->
 	{ok, Cookie_name} = ?CONFIG(cookie_name),
 	{ok, Cookie_options} = ?CONFIG(cookie_options),
-	Req2 = cowboy_req:set_meta(cookie, undefined, Req),
 	cowboy_req:set_resp_cookie(
 		Cookie_name,
 		<<"deleted">>,
 		[{max_age, 0} | Cookie_options],
-		Req2).
+		Req).
 
 create_session(Req) ->
 	SID = list_to_binary(uuid:to_string(uuid:v4())),
