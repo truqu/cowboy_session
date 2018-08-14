@@ -85,41 +85,32 @@ init([]) ->
 %% Internal functions
 %% ===================================================================
 
-get_cookie(#{ cookie := undefined } = Req) ->
-	case cowboy_req:parse_cookies(Req) of
-		[] ->
-			undefined;
-		List ->
-			{ok, Cookie_name} = ?CONFIG(cookie_name),
-			{_Key, Value} = lists:keyfind(Cookie_name, 1, List),
-			Value
-	end;
-get_cookie(#{ cookie := Value }) ->
-	Value.
-
 get_session(Req) ->
-	SID = get_cookie(Req),
-	case SID of
-		undefined ->
-			create_session(Req);
-		_ ->
+	{ok, Cookie_name} = ?CONFIG(cookie_name),
+	Cookie_name_Atom = binary_to_existing_atom(Cookie_name, utf8),
+	case cowboy_req:match_cookies([{Cookie_name_Atom, [], undefined}], Req) of
+		#{Cookie_name_Atom := SID} when SID /= undefined ->
 			case gproc:lookup_local_name({cowboy_session, SID}) of
 				undefined ->
 					create_session(Req, SID);
 				Pid ->
 					cowboy_session_server:touch(Pid),
 					{Pid, Req}
-			end
+			end;
+		_ ->
+			create_session(Req)
 	end.
 
 clear_cookie(Req) ->
 	{ok, Cookie_name} = ?CONFIG(cookie_name),
 	{ok, Cookie_options} = ?CONFIG(cookie_options),
+	Options = maps:from_list([{max_age, 0} | Cookie_options]),
 	cowboy_req:set_resp_cookie(
 		Cookie_name,
 		<<"deleted">>,
-		[{max_age, 0} | Cookie_options],
-		Req).
+		Req,
+		Options
+														).
 
 create_session(Req) ->
 	SID = list_to_binary(uuid:to_string(uuid:v4())),
@@ -130,14 +121,12 @@ create_session(Req, SID) ->
 	{ok, Cookie_options} = ?CONFIG(cookie_options),
 	{ok, Storage} = ?CONFIG(storage),
 	{ok, Expire} = ?CONFIG(expire),
-	{ok, Pid} = supervisor:start_child(cowboy_session_server_sup, [[
-		{sid, SID},
-		{storage, Storage},
-		{expire, Expire}
-	]]),
-	Req2 = cowboy_req:set_resp_cookie(Cookie_name, SID, Cookie_options, Req),
-	Req3 = cowboy_req:set_meta(cookie, SID, Req2),
-	{Pid, Req3}.
+	{ok, Pid} = supervisor:start_child( cowboy_session_server_sup
+																		, [[ {sid, SID}
+																			 , {storage, Storage}
+																			 , {expire, Expire}]]),
+	Req2 = cowboy_req:set_resp_cookie(Cookie_name, SID, Req, maps:from_list(Cookie_options)),
+	{Pid, Req2}.
 
 ensure_started([]) -> ok;
 ensure_started([App | Rest] = Apps) ->
